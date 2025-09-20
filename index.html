@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GET1.0</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; background-color: #f4f4f4; }
+        h1, h2 { color: #333; }
+        .container { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .course-item { display: flex; align-items: center; margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        .course-item input[type="checkbox"] { margin-right: 15px; transform: scale(1.2); }
+        /* .course-item label { flex-grow: 1; font-weight: bold; } */
+        .course-item label { flex-grow: 1; font-weight: bold; color: #ccc;}
+        .course-item label.check { flex-grow: 1; font-weight: bold; color: #333;}
+        .course-item input[type="number"] { width: 80px; padding: 5px; }
+        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;}
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #status, #result { margin-top: 20px; font-weight: bold; }
+        #result a { color: #28a745; text-decoration: none; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>一、传表</h1>
+        <input type="file" id="file1" accept=".xlsx">
+        <button id="button1" onclick="uploadGrid()">上传</button>
+    </div>
+
+    <div class="container" id="rulesSection" style="display:none;">
+        <h2>二、设置课程学分（权重）</h2>
+        <form id="rulesForm"></form>
+        <button id="button2" onclick="calculate()">开始计算</button>
+    </div>
+    
+    <div class="container">
+        <h2>三、处理结果</h2>
+        <div id="status">请先上传文件...</div>
+        <div id="result"></div>
+    </div>
+
+<script>
+    // 用于在不同步骤间传递文件名
+    let uploadedFilename = null;
+
+    // --- 事件监听：上传文件 ---
+    function uploadGrid(){
+        const button1 = document.getElementById('button1');
+        const file1=document.getElementById('file1').files[0];
+        const statusDiv=document.getElementById('status');
+        const rulesSection = document.getElementById('rulesSection');
+
+        if(!file1){
+            alert('请先选择一个.xlsx文件！');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file1);
+
+        statusDiv.textContent = '正在上传并解析文件...';
+        button1.disabled = true;
+
+        fetch('/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            // 暂存文件名，并动态生成表单
+            uploadedFilename = data.filename;
+            populateRulesForm(data.courses);
+            statusDiv.textContent = '文件解析成功！请设置课程学分。';
+            rulesSection.style.display = 'block';
+        })
+        .catch(error => {
+            statusDiv.textContent = 'Error: ' + error;
+        })
+        .finally(() => {
+            button1.disabled = false;
+        });
+    }
+
+
+    // --- 辅助函数：动态创建表单 ---
+    function populateRulesForm(courses) {
+        const rulesForm = document.getElementById('rulesForm');
+        rulesForm.innerHTML = ''; // 清空旧表单
+        
+        for(var i=0;i<courses.length;i++){
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'course-item';
+            var course=courses[i];
+            // console.log(course);
+
+            itemDiv.innerHTML = `
+                <input type="checkbox" id="course-${i}" value="${course}">
+                <label for="course-${i}">${course}</label>
+                <input type="number" placeholder="例如: 4.0" step="0.5" min="0">
+            `;
+
+            // 获取新创建的元素并添加事件监听
+            const checkbox = itemDiv.querySelector('input[type="checkbox"]');
+            const label = itemDiv.querySelector('label');
+
+            checkbox.addEventListener('change', function() {
+                if (this.checked) {
+                    label.classList.add('check');
+                } else {
+                    label.classList.remove('check');
+                }
+            });
+
+            rulesForm.appendChild(itemDiv);
+        }
+    }
+
+    function calculate(){
+        const rules = [];
+        const courseItems = document.querySelectorAll('.course-item');
+        const button2=document.getElementById('button2');
+        const statusDiv = document.getElementById('status');
+        const resultDiv = document.getElementById('result');
+
+        courseItems.forEach(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            if (checkbox.checked) {
+                const creditInput = item.querySelector('input[type="number"]');
+                const courseName = checkbox.value;
+                const creditValue = parseFloat(creditInput.value);
+
+                if (isNaN(creditValue) || creditValue <= 0) {
+                    alert(`课程 "${courseName}" 的学分必须是一个正数！`);
+                    // 标记这是一个无效的输入
+                    throw new Error("Invalid credit value");
+                }
+                rules.push({ course: courseName, credit: creditValue });
+            }
+        });
+
+        if (rules.length === 0) {
+            alert('请至少选择一门课程并填写学分！');
+            return;
+        }
+        
+        statusDiv.textContent = '正在后台计算，请稍候...';
+        button2.disabled = true;
+
+        fetch('/calculate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ filename: uploadedFilename, rules: rules })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // 显示下载链接
+            resultDiv.innerHTML = `<a href="/download/${data.download_file}" download>点击这里下载结果文件</a>`;
+            statusDiv.textContent = '计算完成！';
+        })
+        .catch(error => {
+            outputDiv.textContent = 'Error: ' + error;
+        })
+        .finally(() => {
+            button2.disabled = false;
+        });
+    }
+</script>
+
+</body>
+</html>
