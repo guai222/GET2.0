@@ -10,14 +10,15 @@
         .container { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
         .course-item { display: flex; align-items: center; margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
         .course-item input[type="checkbox"] { margin-right: 15px; transform: scale(1.2); }
-        /* .course-item label { flex-grow: 1; font-weight: bold; } */
         .course-item label { flex-grow: 1; font-weight: bold; color: #ccc;}
         .course-item label.check { flex-grow: 1; font-weight: bold; color: #333;}
         .course-item input[type="number"] { width: 80px; padding: 5px; }
-        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;}
+        button { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 5px;}
         button:disabled { background-color: #ccc; cursor: not-allowed; }
         #status, #result { margin-top: 20px; font-weight: bold; }
         #result a { color: #28a745; text-decoration: none; font-size: 18px; }
+        .search-container { margin-bottom: 10px; display: flex; align-items: center; }
+        .search-container input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-right: 10px; }
     </style>
 </head>
 <body>
@@ -30,6 +31,14 @@
 
     <div class="container" id="rulesSection" style="display:none;">
         <h2>二、设置课程学分（权重）</h2>
+
+        <!-- 搜索框 -->
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="请输入课程关键词...">
+            <button onclick="searchCourses()">搜索</button>
+            <button onclick="resetSearch()">重置</button>
+        </div>
+
         <form id="rulesForm"></form>
         <button id="button2" onclick="calculate()">开始计算</button>
     </div>
@@ -43,6 +52,8 @@
 <script>
     // 用于在不同步骤间传递文件名
     let uploadedFilename = null;
+    let allCourses = [];
+    let rules={};
 
     // --- 事件监听：上传文件 ---
     function uploadGrid(){
@@ -70,6 +81,7 @@
         .then(data => {
             // 暂存文件名，并动态生成表单
             uploadedFilename = data.filename;
+            allCourses=data.courses; // 保存所有课程
             populateRulesForm(data.courses);
             statusDiv.textContent = '文件解析成功！请设置课程学分。';
             rulesSection.style.display = 'block';
@@ -87,20 +99,35 @@
     function populateRulesForm(courses) {
         const rulesForm = document.getElementById('rulesForm');
         rulesForm.innerHTML = ''; // 清空旧表单
-        
+
         for(var i=0;i<courses.length;i++){
             const itemDiv = document.createElement('div');
             itemDiv.className = 'course-item';
             var course=courses[i];
-            // console.log(course);
+            const savedWeight = (rules[course] !== undefined) ? rules[course] : '';
+            const isConfigured = rules[course] !== undefined;
 
             itemDiv.innerHTML = `
-                <input type="checkbox" id="course-${i}" value="${course}">
-                <label for="course-${i}">${course}</label>
-                <input type="number" placeholder="例如: 4.0" step="0.5" min="0">
+                <input type="checkbox" id="course-${i}" value="${course}" ${isConfigured ? 'checked' : ''}>
+                <label for="course-${i}" class='${isConfigured ? 'check' : ''}'>${course}</label>
+                <input type="number" placeholder="例如: 4.0" step="0.5" min="0" value="${savedWeight}">
             `;
 
-            // 获取新创建的元素并添加事件监听
+            itemDiv.addEventListener('change',function(){
+                // 获取新创建的元素并添加事件监听
+                const checkbox = this.querySelector('input[type="checkbox"]');
+                const label = this.querySelector('label');
+                const inputNumDiv=this.querySelector('input[type="number"]');
+                const weight=parseFloat(inputNumDiv.value);
+                const thiscourse=checkbox.value;
+
+                if(checkbox.checked&&weight>0){
+                    rules[thiscourse]=weight;
+                    console.log(rules);
+                }
+            })
+
+            //获取新创建的元素并添加事件监听
             const checkbox = itemDiv.querySelector('input[type="checkbox"]');
             const label = itemDiv.querySelector('label');
 
@@ -116,28 +143,33 @@
         }
     }
 
+    // 搜索按钮
+    function searchCourses(){
+        const searchInput = document.getElementById('searchInput');
+        const keyword = searchInput.value.trim().toLowerCase();
+
+        // 过滤出匹配的课程
+        const filteredCourses = allCourses.filter(course => 
+            course.toLowerCase().includes(keyword)
+        );
+
+        // 重新渲染表单，只显示匹配的课程
+        populateRulesForm(filteredCourses);
+    }
+
+    //重置功能
+    function resetSearch() {
+        const searchInput = document.getElementById('searchInput');
+        searchInput.value = ''; // 清空搜索框
+        rules={}; //清空规则
+        populateRulesForm(allCourses); // 重新渲染所有课程
+        console.log(rules);
+    }
+
     function calculate(){
-        const rules = [];
-        const courseItems = document.querySelectorAll('.course-item');
         const button2=document.getElementById('button2');
         const statusDiv = document.getElementById('status');
         const resultDiv = document.getElementById('result');
-
-        courseItems.forEach(item => {
-            const checkbox = item.querySelector('input[type="checkbox"]');
-            if (checkbox.checked) {
-                const creditInput = item.querySelector('input[type="number"]');
-                const courseName = checkbox.value;
-                const creditValue = parseFloat(creditInput.value);
-
-                if (isNaN(creditValue) || creditValue <= 0) {
-                    alert(`课程 "${courseName}" 的学分必须是一个正数！`);
-                    // 标记这是一个无效的输入
-                    throw new Error("Invalid credit value");
-                }
-                rules.push({ course: courseName, credit: creditValue });
-            }
-        });
 
         if (rules.length === 0) {
             alert('请至少选择一门课程并填写学分！');
