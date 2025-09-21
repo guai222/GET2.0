@@ -157,6 +157,14 @@
         populateRulesForm(filteredCourses);
     }
 
+    // 回车键启动搜索功能
+    const searchInputDiv=document.getElementById('searchInput');
+    searchInputDiv.onkeydown=function(){
+        if(event.keyCode == 13){
+            searchCourses();
+        }
+    }
+
     //重置功能
     function resetSearch() {
         const searchInput = document.getElementById('searchInput');
