@@ -1,4 +1,4 @@
-# 版本1 app.py
+# 版本2 app.py
 # 只适用于为同一专业或同一计算规则的学生设定计算规则
 
 import os
@@ -108,13 +108,10 @@ def calculate():
     """接收计算规则并执行计算"""
     data = request.get_json()
     filename = data.get('filename')
-    rules_list = data.get('rules') # rules 是一个列表，如 [{'course': '语文', 'credit': 4.0}, ...]
+    rules_dict = data.get('rules') # 前端发来的列表为 {'课程名': 学分} 的字典
     
-    if not filename or not rules_list:
+    if not filename or not rules_dict:
         return jsonify({'error': 'Missing filename or rules'}), 400
-        
-    # 将前端发来的列表转换为 {'课程名': 学分} 的字典
-    rules_dict = {item['course']: float(item['credit']) for item in rules_list}
 
     input_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     
